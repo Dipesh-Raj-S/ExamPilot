@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: exampilot_db
+    environment:
+      POSTGRES_USER: exampilot_user
+      POSTGRES_PASSWORD: exampilot_password
+      POSTGRES_DB: exampilot_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U exampilot_user -d exampilot_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  api:
+    build: ./backend
+    container_name: exampilot_api
+    command: >
+      sh -c "flask db init || true && flask db migrate -m 'Initial migration' || true && flask db upgrade || true && gunicorn -b 0.0.0.0:5000 run:app"
+    environment:
+      FLASK_APP: run.py
+      FLASK_ENV: production
+      DATABASE_URL: postgresql://exampilot_user:exampilot_password@db:5432/exampilot_db
+      JWT_SECRET_KEY: super-secret-key-change-in-prod
+      SECRET_KEY: dev-secret-key-123
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  web:
+    build: ./frontend
+    container_name: exampilot_web
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    restart: always
+
+volumes:
+  postgres_data:
