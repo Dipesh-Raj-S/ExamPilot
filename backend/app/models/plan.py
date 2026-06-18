@@ -27,11 +27,16 @@ class ExamPlan(db.Model):
     travel_checklist = db.Column(db.JSON, nullable=True)  # List of items
     route_overview = db.Column(db.Text, nullable=True)
     
+    center_lat = db.Column(db.Float, nullable=True)
+    center_lng = db.Column(db.Float, nullable=True)
+    
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     
     # Relationships
     hotels = db.relationship('HotelRecommendation', backref='exam_plan', lazy=True, cascade="all, delete-orphan")
     restaurants = db.relationship('RestaurantRecommendation', backref='exam_plan', lazy=True, cascade="all, delete-orphan")
+    transport_recommendations = db.relationship('TransportRecommendation', backref='exam_plan', lazy=True, cascade="all, delete-orphan")
+    ai_plans = db.relationship('AITravelPlan', backref='exam_plan', lazy=True, cascade="all, delete-orphan")
     
     def to_dict(self):
         return {
@@ -55,9 +60,13 @@ class ExamPlan(db.Model):
             "travel_duration": self.travel_duration,
             "travel_checklist": self.travel_checklist or [],
             "route_overview": self.route_overview,
+            "center_lat": self.center_lat,
+            "center_lng": self.center_lng,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             
             # Sub-resources
             "hotels": [h.to_dict() for h in self.hotels],
-            "restaurants": [r.to_dict() for r in self.restaurants]
+            "restaurants": [r.to_dict() for r in self.restaurants],
+            "transport": [t.to_dict() for t in self.transport_recommendations],
+            "ai_plans": [a.to_dict() for a in self.ai_plans]
         }

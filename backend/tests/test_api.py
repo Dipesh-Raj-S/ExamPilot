@@ -67,16 +67,19 @@ def test_exam_plan_flow(client):
     
     response = client.post('/api/plans', json=plan_data, headers=headers)
     assert response.status_code == 201
-    plan = response.json
+    plan_response = response.json
     
-    assert plan["exam_name"] == "JEE Advanced"
-    assert plan["arrival_preference"] == "1_day_before"
-    assert plan["arrival_date"] == "2027-05-29" # 1 day before May 30
-    assert len(plan["travel_checklist"]) > 0
-    assert len(plan["hotels"]) == 3
-    assert len(plan["restaurants"]) == 3
+    exam_plan = plan_response["exam_plan"]
+    assert exam_plan["exam_name"] == "JEE Advanced"
+    assert exam_plan["arrival_preference"] == "1_day_before"
+    assert exam_plan["arrival_date"] == "2027-05-29" # 1 day before May 30
+    assert len(exam_plan["travel_checklist"]) > 0
+    assert len(plan_response["hotels"]) > 0
+    assert len(plan_response["restaurants"]) > 0
+    assert len(plan_response["transport"]) > 0
+    assert len(plan_response["ai_plans"]) == 3
     
-    plan_id = plan["id"]
+    plan_id = exam_plan["id"]
     
     # List Exam Plans
     response = client.get('/api/plans', headers=headers)
@@ -86,7 +89,7 @@ def test_exam_plan_flow(client):
     # Get Individual Plan
     response = client.get(f'/api/plans/{plan_id}', headers=headers)
     assert response.status_code == 200
-    assert response.json["id"] == plan_id
+    assert response.json["exam_plan"]["id"] == plan_id
     
     # Delete Exam Plan
     response = client.delete(f'/api/plans/{plan_id}', headers=headers)
