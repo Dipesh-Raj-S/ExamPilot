@@ -9,7 +9,16 @@ class AIPlanner:
     @staticmethod
     def generate_plans(exam_details, hotels, restaurants, transport, utilities):
         """Generate Budget, Balanced, and Comfort plans based on real nearby options using Gemini."""
+        
+        import os
+
+        #for key in os.environ:
+        #    if "GEMINI" in key.upper() or "GOOGLE" in key.upper():
+        #        print(key, "=", os.environ.get(key)[:20])
         api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
+        
+        #print("GEMINI KEY FOUND:", bool(api_key))
+        #print("KEY PREFIX:", api_key[:10] if api_key else "NONE")
         
         # Build prompt context
         exam_name = exam_details.get("exam_name", "Exam")
@@ -118,7 +127,7 @@ Ensure the output contains nothing but the raw valid JSON payload. No markdown t
         
         if api_key:
             try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
                 payload = {
                     "contents": [{
                         "parts": [{"text": prompt}]
@@ -130,7 +139,7 @@ Ensure the output contains nothing but the raw valid JSON payload. No markdown t
                 }
                 
                 logger.info("Calling Gemini API to generate travel plans...")
-                response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=25)
+                response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
                 
                 if response.status_code == 200:
                     resp_json = response.json()

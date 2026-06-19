@@ -16,7 +16,7 @@ class User(db.Model):
         self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
         
     def check_password(self, password):
-        return bcrypt.check_password_hash(self.password_hash, password)
+        return bcrypt.check_password_hash(self.password_hash, password) #hashes the password entered by the user and checks if it matches with the password_hash stored in the database.
         
     def to_dict(self):
         return {

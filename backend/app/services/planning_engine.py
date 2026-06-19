@@ -1,20 +1,22 @@
+import os
+import requests
 import datetime
-import hashlib
+import logging
 from datetime import timedelta
+from app.services.location_service import LocationService
+
+logger = logging.getLogger(__name__)
 
 def get_deterministic_distance(city1, city2):
     """Generates a deterministic distance in km between two cities."""
+    import hashlib
     c1 = city1.strip().lower()
     c2 = city2.strip().lower()
     if c1 == c2:
         return 15.0 # Local distance
     
-    # Generate a deterministic hash from the sorted city names
     combined = "".join(sorted([c1, c2])).encode('utf-8')
     hash_val = int(hashlib.md5(combined).hexdigest(), 16)
-    
-    # Distance range: 100 km to 2000 km
-    # Capped strictly at 2000 km
     distance = 100 + (hash_val % 1900)
     return float(distance)
 
@@ -35,41 +37,94 @@ class PlanningEngine:
         else:
             arrival_date = exam_date - timedelta(days=1) # Default
             
-        # 2. Get Distance & Travel Duration
-        distance = get_deterministic_distance(home_city, center_city)
+        # 2. Get Distance & Travel Duration using OpenRouteService
+        #print("ORS KEY FOUND:", bool(os.environ.get("ORS_API_KEY")))
+        #print("ORS KEY:", os.environ.get("ORS_API_KEY"))
         
-        # Speed and overhead constants
-        # Cap distance to make sure durations are always realistic
-        if distance > 2000:
-            distance = 2000.0
-            
-        if travel_mode.lower() == 'flight':
-            speed = 600.0
-            overhead = 2.0  # airport check-in & boarding
-            hours = (distance / speed) + overhead
-        elif travel_mode.lower() == 'train':
-            speed = 65.0
-            overhead = 1.0
-            hours = (distance / speed) + overhead
-        elif travel_mode.lower() == 'bus':
-            speed = 50.0
-            overhead = 1.5
-            hours = (distance / speed) + overhead
-        else: # Car
-            speed = 75.0
-            overhead = 0.5
-            hours = (distance / speed) + overhead
-            
-        # Format travel duration
-        h = int(hours)
-        m = int((hours - h) * 60)
-        if h > 0:
-            travel_duration_str = f"{h} hours {m} mins" if m > 0 else f"{h} hours"
-        else:
-            travel_duration_str = f"{m} mins"
+        ors_key = os.environ.get('ORS_API_KEY')
+        distance = None
+        travel_duration_str = None
+        hours = None
+
+        if ors_key:
+            try:
+                # Geocode home and center cities to get coordinates
+                home_lat, home_lon = LocationService.get_coordinates(home_city)
+                center_lat, center_lon = LocationService.get_coordinates(center_city)
+                
+                # Query ORS Directions API
+                url = "https://api.openrouteservice.org/v2/directions/driving-car"
+                headers = {
+                    "Authorization": ors_key,
+                    "Content-Type": "application/json"
+                }
+                # Coordinates order: [[lon, lat], [lon, lat]]
+                payload = {
+                    "coordinates": [[home_lon, home_lat], [center_lon, center_lat]]
+                }
+                
+                logger.info(f"Querying ORS Directions for route from {home_city} to {center_city}")
+                response = requests.post(url, json=payload, headers=headers, timeout=12)
+                
+                print("ORS STATUS:", response.status_code)
+                #print("ORS RESPONSE:", response.text[:1000])
+
+                if response.status_code == 200:
+                    data = response.json()
+                    if "routes" in data and len(data["routes"]) > 0:
+                        summary = data["routes"][0]["summary"]
+
+                        route_distance_m = summary["distance"]
+                        route_duration_s = summary["duration"]
+                        
+                        distance = float(route_distance_m / 1000.0)
+                        hours = float(route_duration_s / 3600.0)
+                        
+                        h_val = int(route_duration_s // 3600)
+                        m_val = int((route_duration_s % 3600) // 60)
+                        if h_val > 0:
+                            travel_duration_str = f"{h_val}h {m_val}m" if m_val > 0 else f"{h_val}h"
+                        else:
+                            travel_duration_str = f"{m_val}m"
+                            
+                        logger.info(f"Successfully calculated ORS route: {distance:.2f} km, {travel_duration_str}")
+                else:
+                    logger.error(f"ORS Directions API returned status code {response.status_code}: {response.text}")
+            except Exception as e:
+                logger.error(f"Error calculating ORS route: {str(e)}")
+
+        # Fallback to local deterministic estimates if ORS fails or key is missing
+        if distance is None or travel_duration_str is None or hours is None:
+            logger.warning("Using local deterministic PlanningEngine fallbacks.")
+            distance = get_deterministic_distance(home_city, center_city)
+            if distance > 2000:
+                distance = 2000.0
+                
+            if travel_mode.lower() == 'flight':
+                speed = 600.0
+                overhead = 2.0
+                hours = (distance / speed) + overhead
+            elif travel_mode.lower() == 'train':
+                speed = 65.0
+                overhead = 1.0
+                hours = (distance / speed) + overhead
+            elif travel_mode.lower() == 'bus':
+                speed = 50.0
+                overhead = 1.5
+                hours = (distance / speed) + overhead
+            else: # Car
+                speed = 75.0
+                overhead = 0.5
+                hours = (distance / speed) + overhead
+                
+            h_val = int(hours)
+            m_val = int((hours - h_val) * 60)
+            if h_val > 0:
+                travel_duration_str = f"{h_val}h {m_val}m" if m_val > 0 else f"{h_val}h"
+            else:
+                travel_duration_str = f"{m_val}m"
             
         # 3. Determine Departure Date
-        # If travel time is more than 8 hours, assume overnight travel and set departure a day before arrival
         if hours >= 8.0:
             departure_date = arrival_date - timedelta(days=1)
         else:
