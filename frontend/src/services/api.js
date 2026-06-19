@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // API instance
 const API = axios.create({
-  baseURL: '/api',
+  baseURL: 'https://exampilot-backend-x66t.onrender.com/api',
   headers: {
     'Content-Type': 'application/json',
   },
