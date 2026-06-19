@@ -31,6 +31,18 @@ def create_app(config_class=Config):
     app.register_blueprint(auth_bp, url_prefix='/api/auth') #This is where routes are connected.So every route here automatically starts with: /api/auth
     app.register_blueprint(plan_bp, url_prefix='/api/plans') #Similary: /api/plans
     
+    # Import models so SQLAlchemy knows about them
+    from app.models.user import User
+    from app.models.plan import Plan
+    from app.models.hotel import Hotel
+    from app.models.restaurant import Restaurant
+    from app.models.transport import Transport
+    from app.models.ai_plan import AIPlan
+
+    # Create tables if they don't exist
+    with app.app_context():
+        db.create_all()
+
     # Simple check route
     @app.route('/api/health')
     def health():
