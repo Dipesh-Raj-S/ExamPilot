@@ -32,7 +32,7 @@ def format_plan_response(plan):
 @jwt_required()
 def create_plan():
     user_id = get_jwt_identity()
-    data = request.get_json() or {}
+    data = request.get_json() or {} #Receiving the payload which came from the user 
     
     # Required inputs
     exam_name = data.get('exam_name')

@@ -11,7 +11,7 @@ const PlanDashboard = () => {
   const fetchPlans = async () => {
     try {
       const data = await planService.getPlans();
-      setPlans(data);
+      setPlans(data.map(item => item.exam_plan));
     } catch (err) {
       setErrorMsg("Failed to load plans.");
     } finally {
@@ -37,94 +37,94 @@ const PlanDashboard = () => {
 
   if (loading) {
     return (
-      <div class="flex items-center justify-center min-h-[calc(100vh-76px)]">
-        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      <div className="flex items-center justify-center min-h-[calc(100vh-76px)]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
       </div>
     );
   }
 
   return (
-    <div class="max-w-7xl mx-auto px-6 py-12">
+    <div className="max-w-7xl mx-auto px-6 py-12">
       {/* Header */}
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10">
         <div>
-          <h2 class="font-heading text-3xl font-bold">My Study Journeys</h2>
-          <p class="text-sm text-slate-400">All your active and completed exam travel plans</p>
+          <h2 className="font-heading text-3xl font-bold">My Study Journeys</h2>
+          <p className="text-sm text-slate-400">All your active and completed exam travel plans</p>
         </div>
         <Link
           to="/create"
-          class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-5 py-3 rounded-2xl flex items-center justify-center space-x-2 transition-all duration-300 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/35"
+          className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-5 py-3 rounded-2xl flex items-center justify-center space-x-2 transition-all duration-300 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/35"
         >
-          <Compass class="w-5 h-5" />
+          <Compass className="w-5 h-5" />
           <span>Plan Another Journey</span>
         </Link>
       </div>
 
       {errorMsg && (
-        <div class="flex items-center space-x-2 bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-xl text-sm mb-8">
-          <ShieldAlert class="w-5 h-5 flex-shrink-0" />
+        <div className="flex items-center space-x-2 bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-xl text-sm mb-8">
+          <ShieldAlert className="w-5 h-5 flex-shrink-0" />
           <span>{errorMsg}</span>
         </div>
       )}
 
       {/* Grid */}
       {plans.length === 0 ? (
-        <div class="glass-panel text-center py-20 px-6 rounded-3xl">
-          <div class="bg-indigo-500/10 text-indigo-400 p-4 rounded-full w-fit mx-auto mb-6">
-            <Plane class="w-8 h-8 rotate-45" />
+        <div className="glass-panel text-center py-20 px-6 rounded-3xl">
+          <div className="bg-indigo-500/10 text-indigo-400 p-4 rounded-full w-fit mx-auto mb-6">
+            <Plane className="w-8 h-8 rotate-45" />
           </div>
-          <h3 class="text-xl font-bold mb-2">No travel plans created yet</h3>
-          <p class="text-slate-400 max-w-sm mx-auto mb-8 text-sm">
+          <h3 className="text-xl font-bold mb-2">No travel plans created yet</h3>
+          <p className="text-slate-400 max-w-sm mx-auto mb-8 text-sm">
             Enter your competitive exam hall ticket details and we will plan your travel, hotel, and checklists.
           </p>
           <Link
             to="/create"
-            class="inline-flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-6 py-3 rounded-xl transition-all"
+            className="inline-flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-6 py-3 rounded-xl transition-all"
           >
             <span>Create First Plan</span>
-            <ArrowRight class="w-4 h-4" />
+            <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
       ) : (
-        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {plans.map((plan) => (
             <Link
               key={plan.id}
               to={`/plans/${plan.id}`}
-              class="glass-panel glass-panel-hover p-6 rounded-3xl flex flex-col justify-between h-64 border border-slate-800/80 group"
+              className="glass-panel glass-panel-hover p-6 rounded-3xl flex flex-col justify-between h-64 border border-slate-800/80 group"
             >
               <div>
-                <div class="flex items-start justify-between mb-4">
-                  <span class="text-xs bg-indigo-500/10 border border-indigo-500/35 text-indigo-400 px-3 py-1 rounded-full font-semibold">
+                <div className="flex items-start justify-between mb-4">
+                  <span className="text-xs bg-indigo-500/10 border border-indigo-500/35 text-indigo-400 px-3 py-1 rounded-full font-semibold">
                     {plan.exam_name}
                   </span>
                   <button
                     onClick={(e) => handleDelete(plan.id, e)}
-                    class="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition-colors"
+                    className="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition-colors"
                   >
-                    <Trash2 class="w-4 h-4" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
 
-                <h3 class="text-xl font-bold mb-2 group-hover:text-indigo-400 transition-colors">{plan.center_city}</h3>
+                <h3 className="text-xl font-bold mb-2 group-hover:text-indigo-400 transition-colors">{plan.center_city}</h3>
                 
-                <div class="space-y-2 text-xs text-slate-400">
-                  <div class="flex items-center space-x-2">
-                    <Calendar class="w-4 h-4 text-indigo-400" />
+                <div className="space-y-2 text-xs text-slate-400">
+                  <div className="flex items-center space-x-2">
+                    <Calendar className="w-4 h-4 text-indigo-400" />
                     <span>Exam: {new Date(plan.exam_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                   </div>
-                  <div class="flex items-center space-x-2">
-                    <MapPin class="w-4 h-4 text-indigo-400" />
-                    <span class="truncate max-w-[200px]">Center: {plan.center_name}</span>
+                  <div className="flex items-center space-x-2">
+                    <MapPin className="w-4 h-4 text-indigo-400" />
+                    <span className="truncate max-w-[200px]">Center: {plan.center_name}</span>
                   </div>
                 </div>
               </div>
 
-              <div class="flex items-center justify-between border-t border-slate-900 pt-4 mt-4 text-xs">
-                <span class="text-slate-400">Via <span class="text-slate-200 font-semibold">{plan.travel_mode}</span></span>
-                <span class="text-indigo-400 group-hover:translate-x-1 transition-transform flex items-center space-x-1 font-semibold">
+              <div className="flex items-center justify-between border-t border-slate-900 pt-4 mt-4 text-xs">
+                <span className="text-slate-400">Via <span className="text-slate-200 font-semibold">{plan.travel_mode}</span></span>
+                <span className="text-indigo-400 group-hover:translate-x-1 transition-transform flex items-center space-x-1 font-semibold">
                   <span>View Details</span>
-                  <ArrowRight class="w-4 h-4" />
+                  <ArrowRight className="w-4 h-4" />
                 </span>
               </div>
             </Link>
