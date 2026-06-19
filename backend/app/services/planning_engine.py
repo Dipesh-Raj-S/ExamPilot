@@ -38,9 +38,6 @@ class PlanningEngine:
             arrival_date = exam_date - timedelta(days=1) # Default
             
         # 2. Get Distance & Travel Duration using OpenRouteService
-        #print("ORS KEY FOUND:", bool(os.environ.get("ORS_API_KEY")))
-        #print("ORS KEY:", os.environ.get("ORS_API_KEY"))
-        
         ors_key = os.environ.get('ORS_API_KEY')
         distance = None
         travel_duration_str = None
@@ -63,11 +60,10 @@ class PlanningEngine:
                     "coordinates": [[home_lon, home_lat], [center_lon, center_lat]]
                 }
                 
-                logger.info(f"Querying ORS Directions for route from {home_city} to {center_city}")
+                logger.info(f"[ORS] Initiating ORS Directions request for route from {home_city} to {center_city}")
                 response = requests.post(url, json=payload, headers=headers, timeout=12)
                 
-                print("ORS STATUS:", response.status_code)
-                #print("ORS RESPONSE:", response.text[:1000])
+                logger.info(f"[ORS] Response status code: {response.status_code}")
 
                 if response.status_code == 200:
                     data = response.json()
@@ -78,37 +74,58 @@ class PlanningEngine:
                         route_duration_s = summary["duration"]
                         
                         distance = float(route_distance_m / 1000.0)
-                        hours = float(route_duration_s / 3600.0)
                         
-                        h_val = int(route_duration_s // 3600)
-                        m_val = int((route_duration_s % 3600) // 60)
+                        # Apply travel-mode specific duration logic
+                        mode = travel_mode.lower()
+                        if mode == 'flight':
+                            speed = 600.0
+                            overhead = 2.0
+                            hours = (distance / speed) + overhead
+                        elif mode == 'train':
+                            speed = 65.0
+                            overhead = 1.0
+                            hours = (distance / speed) + overhead
+                        elif mode == 'bus':
+                            hours = float(route_duration_s / 3600.0)
+                        else: # Car or other driving modes
+                            hours = float(route_duration_s / 3600.0)
+                        
+                        h_val = int(hours)
+                        m_val = int(round((hours - h_val) * 60))
+                        if m_val == 60:
+                            h_val += 1
+                            m_val = 0
+                            
                         if h_val > 0:
                             travel_duration_str = f"{h_val}h {m_val}m" if m_val > 0 else f"{h_val}h"
                         else:
                             travel_duration_str = f"{m_val}m"
                             
-                        logger.info(f"Successfully calculated ORS route: {distance:.2f} km, {travel_duration_str}")
+                        logger.info(f"[ORS] Successfully calculated route: distance = {distance:.2f} km, mode = {travel_mode}, duration = {travel_duration_str}")
                 else:
-                    logger.error(f"ORS Directions API returned status code {response.status_code}: {response.text}")
+                    logger.error(f"[ORS] Directions API returned status code {response.status_code}: {response.text}")
+            except requests.RequestException as e:
+                logger.error(f"[ORS] Request exception during ORS route calculation: {str(e)}")
             except Exception as e:
-                logger.error(f"Error calculating ORS route: {str(e)}")
+                logger.error(f"[ORS] Exception during ORS route calculation: {str(e)}")
 
         # Fallback to local deterministic estimates if ORS fails or key is missing
         if distance is None or travel_duration_str is None or hours is None:
-            logger.warning("Using local deterministic PlanningEngine fallbacks.")
+            logger.warning("[ORS] Using local deterministic PlanningEngine fallbacks.")
             distance = get_deterministic_distance(home_city, center_city)
             if distance > 2000:
                 distance = 2000.0
                 
-            if travel_mode.lower() == 'flight':
+            mode = travel_mode.lower()
+            if mode == 'flight':
                 speed = 600.0
                 overhead = 2.0
                 hours = (distance / speed) + overhead
-            elif travel_mode.lower() == 'train':
+            elif mode == 'train':
                 speed = 65.0
                 overhead = 1.0
                 hours = (distance / speed) + overhead
-            elif travel_mode.lower() == 'bus':
+            elif mode == 'bus':
                 speed = 50.0
                 overhead = 1.5
                 hours = (distance / speed) + overhead
@@ -118,7 +135,10 @@ class PlanningEngine:
                 hours = (distance / speed) + overhead
                 
             h_val = int(hours)
-            m_val = int((hours - h_val) * 60)
+            m_val = int(round((hours - h_val) * 60))
+            if m_val == 60:
+                h_val += 1
+                m_val = 0
             if h_val > 0:
                 travel_duration_str = f"{h_val}h {m_val}m" if m_val > 0 else f"{h_val}h"
             else:

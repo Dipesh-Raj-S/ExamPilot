@@ -127,7 +127,10 @@ Ensure the output contains nothing but the raw valid JSON payload. No markdown t
         
         if api_key:
             try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+                import time
+                # Redacted url for safe logging
+                base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+                url = f"{base_url}?key={api_key}"
                 payload = {
                     "contents": [{
                         "parts": [{"text": prompt}]
@@ -138,25 +141,48 @@ Ensure the output contains nothing but the raw valid JSON payload. No markdown t
                     }
                 }
                 
-                logger.info("Calling Gemini API to generate travel plans...")
+                logger.info(f"[Gemini] Initiating travel plans generation. Prompt characters: {len(prompt)}")
+                logger.info(f"[Gemini] API request URL: {base_url}")
+                
+                start_time = time.time()
                 response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
+                elapsed = time.time() - start_time
+                
+                logger.info(f"[Gemini] Response received in {elapsed:.2f}s with status code {response.status_code}")
                 
                 if response.status_code == 200:
                     resp_json = response.json()
-                    candidate_text = resp_json["candidates"][0]["content"]["parts"][0]["text"]
-                    logger.info("Successfully received response from Gemini API.")
-                    
-                    # Parse and return JSON
-                    parsed_plans = json.loads(candidate_text.strip())
-                    if "plans" in parsed_plans and len(parsed_plans["plans"]) == 3:
-                        return parsed_plans["plans"]
+                    try:
+                        candidate_text = resp_json["candidates"][0]["content"]["parts"][0]["text"]
+                        logger.debug(f"[Gemini] Raw candidate text: {candidate_text}")
+                        
+                        text = candidate_text.strip()
+                        if text.startswith("```"):
+                            # Remove code fence markers
+                            lines = text.splitlines()
+                            if lines[0].startswith("```"):
+                                lines = lines[1:]
+                            if lines and lines[-1].startswith("```"):
+                                lines = lines[:-1]
+                            text = "\n".join(lines).strip()
+                            
+                        parsed_plans = json.loads(text)
+                        if "plans" in parsed_plans and len(parsed_plans["plans"]) == 3:
+                            logger.info("[Gemini] Successfully generated and parsed 3 plans from Gemini.")
+                            return parsed_plans["plans"]
+                        else:
+                            logger.warning(f"[Gemini] Parsed JSON did not contain exactly 3 plans: {text}")
+                    except (KeyError, IndexError, json.JSONDecodeError) as parse_err:
+                        logger.error(f"[Gemini] Failed to parse candidate text into plans: {str(parse_err)}")
                 else:
-                    logger.error(f"Gemini API returned status code {response.status_code}: {response.text}")
+                    logger.error(f"[Gemini] API returned status code {response.status_code}: {response.text}")
+            except requests.RequestException as e:
+                logger.error(f"[Gemini] Request exception calling Gemini API: {str(e)}")
             except Exception as e:
-                logger.error(f"Failed to generate plans using Gemini API: {str(e)}")
+                logger.error(f"[Gemini] General exception during AI travel plans generation: {str(e)}")
         
         # Fallback implementation
-        logger.warning("Using local deterministic AI Planner fallback generator.")
+        logger.warning("[Gemini] Using local deterministic AI Planner fallback generator.")
         return AIPlanner._generate_fallback_plans(hotels, restaurants, transport, travel_mode, budget, arrival_pref)
 
     @staticmethod

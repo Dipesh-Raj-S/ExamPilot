@@ -28,6 +28,40 @@ def get_deterministic_offset_coords(lat, lon, seed_str, index, min_dist_km, max_
     lon_offset = (dist * math.sin(angle)) / (111.0 * math.cos(math.radians(lat)))
     return float(lat + lat_offset), float(lon + lon_offset)
 
+def deduplicate_places(places, name_key, lat_key, lon_key):
+    """Filter out duplicate places by case-insensitive name and coordinates (within 0.0001 deg)."""
+    seen_names = set()
+    seen_coords = []
+    unique_places = []
+    
+    for p in places:
+        name = p.get(name_key)
+        if not name:
+            continue
+        name_clean = name.strip().lower()
+        lat = p.get(lat_key)
+        lon = p.get(lon_key)
+        if lat is None or lon is None:
+            continue
+            
+        if name_clean in seen_names:
+            continue
+            
+        # Check coordinate distance (within 0.0001 deg is approx 10 meters)
+        is_dup_coord = False
+        for slat, slon in seen_coords:
+            if abs(lat - slat) < 0.0001 and abs(lon - slon) < 0.0001:
+                is_dup_coord = True
+                break
+        if is_dup_coord:
+            continue
+            
+        seen_names.add(name_clean)
+        seen_coords.append((lat, lon))
+        unique_places.append(p)
+        
+    return unique_places
+
 class LocationService:
     @staticmethod
     def _get_api_key():
@@ -43,46 +77,59 @@ class LocationService:
 
         if api_key:
             try:
+                import time
                 url = "https://api.geoapify.com/v1/geocode/search"
                 params = {
                     "text": query,
                     "limit": 1,
                     "apiKey": api_key
                 }
-                logger.info(f"Querying Geoapify Geocoding for: {query}")
+                log_params = params.copy()
+                log_params["apiKey"] = "REDACTED"
+                logger.info(f"[Geoapify] Initiating geocoding for query: '{query}' | URL: {url} | params: {log_params}")
+                
+                start_time = time.time()
                 response = requests.get(url, params=params, timeout=20)
+                elapsed = time.time() - start_time
+                logger.info(f"[Geoapify] Geocoding response received in {elapsed:.2f}s with status code {response.status_code}")
+                
                 if response.status_code == 200:
                     data = response.json()
                     if data and "features" in data and len(data["features"]) > 0:
                         props = data["features"][0]["properties"]
                         lat = float(props["lat"])
                         lon = float(props["lon"])
-                        logger.info(f"Geoapify geocoded {query} to ({lat}, {lon})")
+                        logger.info(f"[Geoapify] Geocoded successfully to ({lat}, {lon})")
                         return lat, lon
                 
                 # Retry with address only if combined query fails
                 if center_name:
-                    logger.info(f"Geoapify combined query failed. Retrying with address only: {address}")
+                    logger.info(f"[Geoapify] Combined query failed. Retrying with address only: '{address}'")
                     params["text"] = address
+                    
+                    start_time = time.time()
                     response = requests.get(url, params=params, timeout=20)
+                    elapsed = time.time() - start_time
+                    logger.info(f"[Geoapify] Geocoding (address only) response received in {elapsed:.2f}s with status code {response.status_code}")
+                    
                     if response.status_code == 200:
                         data = response.json()
                         if data and "features" in data and len(data["features"]) > 0:
                             props = data["features"][0]["properties"]
                             lat = float(props["lat"])
                             lon = float(props["lon"])
-                            logger.info(f"Geoapify geocoded address only to ({lat}, {lon})")
+                            logger.info(f"[Geoapify] Geocoded successfully (address only) to ({lat}, {lon})")
                             return lat, lon
             except Exception as e:
-                logger.error(f"Error in Geoapify geocoding: {str(e)}")
+                logger.error(f"[Geoapify] Error in geocoding: {str(e)}")
         else:
-            logger.warning("GEOAPIFY_API_KEY env variable is missing. Geocoding will use fallback.")
+            logger.warning("[Geoapify] GEOAPIFY_API_KEY env variable is missing. Geocoding will use fallback.")
 
         # Deterministic fallback
         h = int(hashlib.md5(address.encode('utf-8')).hexdigest(), 16)
         fallback_lat = 19.0760 + ((h % 100) / 500.0) - 0.1
         fallback_lon = 72.8777 + (((h >> 8) % 100) / 500.0) - 0.1
-        logger.warning(f"Using fallback coordinates ({fallback_lat}, {fallback_lon}) for address: {address}")
+        logger.warning(f"[Geoapify] Using fallback coordinates ({fallback_lat}, {fallback_lon}) for address: {address}")
         return fallback_lat, fallback_lon
 
     @staticmethod
@@ -93,6 +140,7 @@ class LocationService:
 
         if api_key:
             try:
+                import time
                 url = "https://api.geoapify.com/v2/places"
                 params = {
                     "categories": "accommodation.hotel,accommodation.hostel,accommodation.guest_house",
@@ -101,8 +149,15 @@ class LocationService:
                     "limit": 20,
                     "apiKey": api_key
                 }
-                logger.info(f"Querying Geoapify Places for hotels around ({lat}, {lon})")
+                log_params = params.copy()
+                log_params["apiKey"] = "REDACTED"
+                logger.info(f"[Geoapify] Querying hotels around ({lat}, {lon}) | URL: {url} | params: {log_params}")
+                
+                start_time = time.time()
                 response = requests.get(url, params=params, timeout=20)
+                elapsed = time.time() - start_time
+                logger.info(f"[Geoapify] Hotels query completed in {elapsed:.2f}s with status code {response.status_code}")
+                
                 if response.status_code == 200:
                     data = response.json()
                     if data and "features" in data:
@@ -113,7 +168,7 @@ class LocationService:
                                 continue
                             el_lat = props.get("lat")
                             el_lon = props.get("lon")
-                            if el_lat and el_lon:
+                            if el_lat is not None and el_lon is not None:
                                 dist = haversine_distance(lat, lon, el_lat, el_lon)
                                 # Deterministic rating based on name
                                 h = int(hashlib.md5(name.encode('utf-8')).hexdigest(), 16)
@@ -127,15 +182,19 @@ class LocationService:
                                     "longitude": float(el_lon),
                                     "estimated_price": price
                                 })
+                    # Deduplicate places
+                    hotels = deduplicate_places(hotels, "hotel_name", "latitude", "longitude")
+                else:
+                    logger.error(f"[Geoapify] Hotels query failed. Status code {response.status_code}: {response.text}")
             except Exception as e:
-                logger.error(f"Error fetching hotels from Geoapify: {str(e)}")
+                logger.error(f"[Geoapify] Error fetching hotels: {str(e)}")
 
-        # Sort by distance
-        hotels.sort(key=lambda x: x["distance"])
+        # Sort by distance first, then rating descending
+        hotels.sort(key=lambda x: (x["distance"], -x["rating"]))
 
         # Fallback if empty or API key missing
         if not hotels:
-            logger.warning("No hotels returned from Geoapify. Using fallback hotels.")
+            logger.warning("[Geoapify] No hotels returned. Using fallback hotels.")
             names = ["Scholars Inn & Suites", "University PG & Student Housing", "The Calm Study Stay", "Exam Comfort Lodge"]
             for i, name in enumerate(names):
                 h_lat, h_lon = get_deterministic_offset_coords(lat, lon, name, i, 0.4, 2.8)
@@ -150,6 +209,8 @@ class LocationService:
                     "longitude": h_lon,
                     "estimated_price": price
                 })
+            hotels.sort(key=lambda x: (x["distance"], -x["rating"]))
+            
         return hotels[:5]
 
     @staticmethod
@@ -160,6 +221,7 @@ class LocationService:
 
         if api_key:
             try:
+                import time
                 url = "https://api.geoapify.com/v2/places"
                 params = {
                     "categories": "catering.restaurant",
@@ -168,8 +230,15 @@ class LocationService:
                     "limit": 20,
                     "apiKey": api_key
                 }
-                logger.info(f"Querying Geoapify Places for restaurants around ({lat}, {lon})")
+                log_params = params.copy()
+                log_params["apiKey"] = "REDACTED"
+                logger.info(f"[Geoapify] Querying restaurants around ({lat}, {lon}) | URL: {url} | params: {log_params}")
+                
+                start_time = time.time()
                 response = requests.get(url, params=params, timeout=20)
+                elapsed = time.time() - start_time
+                logger.info(f"[Geoapify] Restaurants query completed in {elapsed:.2f}s with status code {response.status_code}")
+                
                 if response.status_code == 200:
                     data = response.json()
                     if data and "features" in data:
@@ -180,7 +249,7 @@ class LocationService:
                                 continue
                             el_lat = props.get("lat")
                             el_lon = props.get("lon")
-                            if el_lat and el_lon:
+                            if el_lat is not None and el_lon is not None:
                                 dist = haversine_distance(lat, lon, el_lat, el_lon)
                                 cats = props.get("categories", [])
                                 is_veg = "diet.vegetarian" in cats or "vegetarian" in name.lower() or "pure veg" in name.lower()
@@ -197,13 +266,18 @@ class LocationService:
                                     "latitude": float(el_lat),
                                     "longitude": float(el_lon)
                                 })
+                    # Deduplicate places
+                    restaurants = deduplicate_places(restaurants, "restaurant_name", "latitude", "longitude")
+                else:
+                    logger.error(f"[Geoapify] Restaurants query failed. Status code {response.status_code}: {response.text}")
             except Exception as e:
-                logger.error(f"Error fetching restaurants from Geoapify: {str(e)}")
+                logger.error(f"[Geoapify] Error fetching restaurants: {str(e)}")
 
-        restaurants.sort(key=lambda x: x["distance"])
+        # Sort by distance first, then rating descending
+        restaurants.sort(key=lambda x: (x["distance"], -x["rating"]))
 
         if not restaurants:
-            logger.warning("No restaurants returned from Geoapify. Using fallback restaurants.")
+            logger.warning("[Geoapify] No restaurants returned. Using fallback restaurants.")
             names = ["Annapurna Pure Veg Student Mess", "Aspirant Canteen & Grill", "The Study Break Cafe", "Central Feast Dining"]
             for i, name in enumerate(names):
                 r_lat, r_lon = get_deterministic_offset_coords(lat, lon, name, i, 0.2, 1.8)
@@ -218,6 +292,8 @@ class LocationService:
                     "latitude": r_lat,
                     "longitude": r_lon
                 })
+            restaurants.sort(key=lambda x: (x["distance"], -x["rating"]))
+            
         return restaurants[:5]
 
     @staticmethod
@@ -228,16 +304,24 @@ class LocationService:
 
         if api_key:
             try:
+                import time
                 url = "https://api.geoapify.com/v2/places"
                 params = {
-                    "categories": "public_transport.station,public_transport.subway,public_transport.bus",
+                    "categories": "public_transport",
                     "filter": f"circle:{lon},{lat},20000",
                     "bias": f"proximity:{lon},{lat}",
                     "limit": 20,
                     "apiKey": api_key
                 }
-                logger.info(f"Querying Geoapify Places for transit around ({lat}, {lon})")
+                log_params = params.copy()
+                log_params["apiKey"] = "REDACTED"
+                logger.info(f"[Geoapify] Querying transport around ({lat}, {lon}) | URL: {url} | params: {log_params}")
+                
+                start_time = time.time()
                 response = requests.get(url, params=params, timeout=20)
+                elapsed = time.time() - start_time
+                logger.info(f"[Geoapify] Transport query completed in {elapsed:.2f}s with status code {response.status_code}")
+                
                 if response.status_code == 200:
                     data = response.json()
                     if data and "features" in data:
@@ -248,7 +332,7 @@ class LocationService:
                                 continue
                             el_lat = props.get("lat")
                             el_lon = props.get("lon")
-                            if el_lat and el_lon:
+                            if el_lat is not None and el_lon is not None:
                                 dist = haversine_distance(lat, lon, el_lat, el_lon)
                                 cats = props.get("categories", [])
                                 
@@ -265,15 +349,21 @@ class LocationService:
                                     "latitude": float(el_lat),
                                     "longitude": float(el_lon)
                                 })
+                    # Deduplicate stations
+                    stations = deduplicate_places(stations, "station_name", "latitude", "longitude")
+                else:
+                    logger.error(f"[Geoapify] Transport query failed. Status code {response.status_code}: {response.text}")
             except Exception as e:
-                logger.error(f"Error fetching transport from Geoapify: {str(e)}")
+                logger.error(f"[Geoapify] Error fetching transport from Geoapify: {str(e)}")
 
-        stations.sort(key=lambda x: x["distance"])
         in_range = [s for s in stations if 10.0 <= s["distance"] <= 20.0]
         results = in_range if in_range else stations
+        
+        # Sort results: distance primary ascending, type_relevance secondary ascending (0 for Railway/Metro, 1 for Bus)
+        results.sort(key=lambda x: (x["distance"], 0 if x["transport_type"] in ["Railway Station", "Metro Station"] else 1))
 
         if not results:
-            logger.warning("No transport stations returned from Geoapify. Using fallback transport.")
+            logger.warning("[Geoapify] No transport stations returned. Using fallback transport.")
             fallback_names = [
                 ("Central Junction Railway Station", "Railway Station", 12.4),
                 ("Main Inter-State Bus Terminus (ISBT)", "Bus Station", 8.2),
@@ -289,6 +379,12 @@ class LocationService:
                     "latitude": s_lat,
                     "longitude": s_lon
                 })
+            # Filter and sort fallback too
+            in_range_fb = [s for s in results if 10.0 <= s["distance"] <= 20.0]
+            final_fb = in_range_fb if in_range_fb else results
+            final_fb.sort(key=lambda x: (x["distance"], 0 if x["transport_type"] in ["Railway Station", "Metro Station"] else 1))
+            results = final_fb
+            
         return results[:5]
 
     @staticmethod
@@ -299,6 +395,7 @@ class LocationService:
 
         if api_key:
             try:
+                import time
                 url = "https://api.geoapify.com/v2/places"
                 params = {
                     "categories": "healthcare.hospital,healthcare.pharmacy,service.financial.atm",
@@ -307,8 +404,15 @@ class LocationService:
                     "limit": 20,
                     "apiKey": api_key
                 }
-                logger.info(f"Querying Geoapify Places for utilities around ({lat}, {lon})")
+                log_params = params.copy()
+                log_params["apiKey"] = "REDACTED"
+                logger.info(f"[Geoapify] Querying utilities around ({lat}, {lon}) | URL: {url} | params: {log_params}")
+                
+                start_time = time.time()
                 response = requests.get(url, params=params, timeout=20)
+                elapsed = time.time() - start_time
+                logger.info(f"[Geoapify] Utilities query completed in {elapsed:.2f}s with status code {response.status_code}")
+                
                 if response.status_code == 200:
                     data = response.json()
                     if data and "features" in data:
@@ -333,7 +437,7 @@ class LocationService:
                             if not name:
                                 continue
                                 
-                            if el_lat and el_lon:
+                            if el_lat is not None and el_lon is not None:
                                 dist = haversine_distance(lat, lon, el_lat, el_lon)
                                 utilities.append({
                                     "name": name,
@@ -342,13 +446,17 @@ class LocationService:
                                     "latitude": float(el_lat),
                                     "longitude": float(el_lon)
                                 })
+                    # Deduplicate utilities
+                    utilities = deduplicate_places(utilities, "name", "latitude", "longitude")
+                else:
+                    logger.error(f"[Geoapify] Utilities query failed. Status code {response.status_code}: {response.text}")
             except Exception as e:
-                logger.error(f"Error fetching utilities from Geoapify: {str(e)}")
+                logger.error(f"[Geoapify] Error fetching utilities from Geoapify: {str(e)}")
 
         utilities.sort(key=lambda x: x["distance"])
 
         if not utilities:
-            logger.warning("No utilities returned from Geoapify. Using fallback utilities.")
+            logger.warning("[Geoapify] No utilities returned. Using fallback utilities.")
             fallback_items = [
                 ("City Health Care Hospital", "Hospital", 1.1),
                 ("Apollo Pharmacy / Chemist", "Pharmacy", 0.5),
@@ -364,4 +472,6 @@ class LocationService:
                     "latitude": u_lat,
                     "longitude": u_lon
                 })
+            utilities.sort(key=lambda x: x["distance"])
+            
         return utilities[:5]
