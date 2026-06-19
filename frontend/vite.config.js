@@ -9,7 +9,7 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'https://exampilot-backend.onrender.com',
+        target: 'https://exampilot-backend-x66t.onrender.com',
         changeOrigin: true,
         secure: false,
       }
